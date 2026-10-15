@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>🗺️ 神秘寻宝之旅 · async/await 动画版</title>
+<style>
+  :root{
+    --speed:1;
+    --gold:#ffd479;
+    --gold-2:#ffab3d;
+    --ok:#5ee6a8;
+    --err:#ff8080;
+    --warn:#ffd166;
+    --txt:#e9edff;
+    --muted:#96a0c8;
+    --line:rgba(255,212,121,.22);
+    --card:rgba(18,22,48,.72);
+  }
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    min-height:100vh;
+    font-family:"Segoe UI",system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+    color:var(--txt);
+    background:
+      radial-gradient(1200px 700px at 15% -10%,#2c1a56 0%,transparent 60%),
+      radial-gradient(1000px 600px at 95% 5%,#0f3b60 0%,transparent 55%),
+      #070b1c;
+    padding:26px 16px 44px;
+    display:flex;justify-content:center;
+  }
+  .stars{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:0}
+  .stars i{position:absolute;width:2px;height:2px;border-radius:50%;background:#fff;animation:tw 3s ease-in-out infinite}
+  @keyframes tw{0%,100%{opacity:.12;transform:scale(.8)}50%{opacity:.9;transform:scale(1.4)}}
+
+  .app{position:relative;z-index:1;width:min(1060px,100%);display:flex;flex-direction:column;gap:16px}
+  h1{margin:0;font-size:clamp(22px,4vw,34px);letter-spacing:.5px;
+     background:linear-gradient(90deg,var(--gold),#fff5d6 40%,var(--gold-2));
+     -webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero-head p{margin:8px 0 0;color:var(--muted);font-size:14px}
+  code{background:rgba(255,255,255,.08);padding:1px 6px;border-radius:6px;font-size:.92em;color:var(--gold)}
+
+  /* ---------- 舞台 ---------- */
+  .stage{position:relative;height:300px;border-radius:22px;overflow:hidden;border:1px solid var(--line);
+    background:linear-gradient(180deg,#0a0f26 0%,#1a1136 55%,#2a1a3f 100%);
+    box-shadow:0 26px 60px -34px #000, inset 0 1px 0 rgba(255,255,255,.06)}
+  .stage::after{content:"";position:absolute;left:0;right:0;bottom:0;height:88px;
+    background:linear-gradient(180deg,transparent,rgba(255,171,61,.12))}
+  .path{position:absolute;left:4%;right:4%;bottom:74px;height:3px;border-radius:3px;
+    background:repeating-linear-gradient(90deg,rgba(255,212,121,.5) 0 10px,transparent 10px 22px)}
+  .spot{position:absolute;bottom:82px;width:96px;transform:translateX(-50%);
+    display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;
+    opacity:.38;transition:opacity .4s,transform .4s}
+  .spot .icon{font-size:30px;filter:grayscale(.75);transition:.4s}
+  .spot .name{font-size:11px;color:var(--muted);white-space:nowrap}
+  .spot.active{opacity:1;transform:translateX(-50%) translateY(-8px)}
+  .spot.active .icon{filter:none;transform:scale(1.25);text-shadow:0 0 26px rgba(255,212,121,.9)}
+  .spot.done{opacity:.95}
+  .spot.done .icon{filter:none}
+  .spot.done .name{color:var(--gold)}
+  .spot .bubble{position:absolute;bottom:64px;padding:4px 10px;border-radius:20px;font-size:11px;white-space:nowrap;
+    background:rgba(255,212,121,.16);border:1px solid var(--line);color:var(--gold);
+    opacity:0;transform:translateY(6px);transition:.35s}
+  .spot.active .bubble{opacity:1;transform:translateY(0)}
+
+  .hero-char{position:absolute;bottom:56px;left:2%;font-size:36px;transform:translateX(-50%);z-index:3;
+    transition:left calc(1.1s / var(--speed)) cubic-bezier(.66,0,.34,1);
+    filter:drop-shadow(0 0 14px rgba(255,212,121,.75));animation:bob 1.6s ease-in-out infinite}
+  @keyframes bob{0%,100%{transform:translateX(-50%) translateY(0)}50%{transform:translateX(-50%) translateY(-6px)}}
+  .fx{position:absolute;inset:0;pointer-events:none;z-index:4}
+  .particle{position:absolute;font-size:16px;transform:translate(-50%,-50%)}
+
+  /* ---------- 进度 / 步骤 ---------- */
+  .bar{height:8px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden;border:1px solid rgba(255,255,255,.06)}
+  .bar-fill{height:100%;width:0;border-radius:999px;transition:width .5s ease;
+    background:linear-gradient(90deg,var(--gold-2),var(--gold),#fff3cf);box-shadow:0 0 18px rgba(255,212,121,.5)}
+  .steps{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;font-size:12px;
+    background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);color:var(--muted);transition:.3s}
+  .chip.active{border-color:var(--gold);color:var(--gold);background:rgba(255,212,121,.12)}
+  .chip.done{border-color:rgba(94,230,168,.5);color:var(--ok);background:rgba(94,230,168,.1)}
+
+  /* ---------- 面板 ---------- */
+  .grid{display:grid;grid-template-columns:1.6fr 1fr;gap:16px}
+  @media(max-width:780px){.grid{grid-template-columns:1fr}}
+  .panel{background:var(--card);border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:16px;
+    backdrop-filter:blur(10px);box-shadow:0 20px 50px -38px #000}
+  .panel-title{font-size:12px;letter-spacing:1.5px;color:var(--gold);margin-bottom:10px;text-transform:uppercase}
+
+  .log{height:238px;overflow:auto;display:flex;flex-direction:column;gap:5px;
+    font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;line-height:1.65}
+  .row{animation:slide .35s ease both;border-left:2px solid transparent;padding-left:9px}
+  @keyframes slide{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
+  .row .t{color:#6b76a3;margin-right:8px}
+  .row.info{border-color:#5b8cff;color:#dfe6ff}
+  .row.ok{border-color:var(--ok);color:#c8ffe7}
+  .row.err{border-color:var(--err);color:#ffd4d4}
+  .row.warn{border-color:var(--warn);color:#ffeec2}
+
+  .btn{width:100%;padding:11px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.14);
+    background:rgba(255,255,255,.06);color:var(--txt);font-size:14px;font-family:inherit;cursor:pointer;transition:.25s}
+  .btn+.btn{margin-top:10px}
+  .btn:hover:not(:disabled){background:rgba(255,255,255,.13);transform:translateY(-1px)}
+  .btn.primary{background:linear-gradient(135deg,var(--gold-2),var(--gold));color:#2a1a00;font-weight:700;border:none;
+    box-shadow:0 12px 28px -14px rgba(255,171,61,.95)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .field{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px;font-size:13px;color:var(--muted)}
+  select{background:#151a35;color:var(--txt);border:1px solid rgba(255,255,255,.14);border-radius:10px;
+    padding:7px 10px;font-family:inherit;font-size:13px}
+  .hint{font-size:12px;color:var(--muted);line-height:1.65;margin:14px 0 0}
+
+  .code-panel summary{cursor:pointer;color:var(--gold);font-size:13px;letter-spacing:1px}
+  .code-panel pre{margin:12px 0 0;padding:14px;border-radius:12px;background:rgba(0,0,0,.45);overflow:auto;
+    font-size:12.5px;line-height:1.6;color:#cfe0ff;max-height:340px}
+</style>
+</head>
+<body>
+<div class="stars" id="stars" aria-hidden="true"></div>
+
+<div class="app">
+  <header class="hero-head">
+    <h1>🗺️ 神秘寻宝之旅</h1>
+    <p>图书馆的古卷 → 迷雾之河 → 三条密道 → 神庙守卫 → 谜语宝箱 · 全程由 <code>async/await</code> 驱动</p>
+  </header>
+
+  <section class="stage" id="stage">
+    <div class="path"></div>
+    <div id="spots"></div>
+    <div class="hero-char" id="hero">🧙</div>
+    <div class="fx" id="fx"></div>
+  </section>
+
+  <div class="bar"><div class="bar-fill" id="barFill"></div></div>
+  <div class="steps" id="steps"></div>
+
+  <div class="grid">
+    <div class="panel">
+      <div class="panel-title">📜 冒险日志</div>
+      <div class="log" id="log"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">🎛️ 控制台</div>
+      <button class="btn primary" id="start">▶ 开始寻宝</button>
+      <button class="btn" id="reset">↺ 重来</button>
+      <label class="field">动画速度
+        <select id="speed">
+          <option value="1">1× 正常</option>
+          <option value="2">2× 快</option>
+          <option value="4">4× 很快</option>
+          <option value="8">8× 瞬移</option>
+        </select>
+      </label>
+      <p class="hint">每一步都用 <code>await</code> 等待;失败会走进 <code>catch</code> 并自动重试。<code>Promise.any</code> 并行探路,<code>Promise.race</code> 和守卫赛跑。</p>
+    </div>
+  </div>
+
+  <details class="panel code-panel">
+    <summary>查看核心 async/await 代码</summary>
+    <pre id="code"></pre>
+  </details>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const stage = $('stage'), hero = $('hero'), fx = $('fx');
+  const logEl = $('log'), stepsEl = $('steps'), barFill = $('barFill');
+
+  let speed = 1;
+  const delay = (ms) => new Promise((r) => setTimeout(r, Math.max(30, ms / speed)));
+
+  /* ---------- 寻宝路线 ---------- */
+  const STEPS = [
+    { id:'library',  icon:'📖', name:'图书馆',   x:6,  label:'发现第一个线索' },
+    { id:'script',   icon:'📜', name:'解码古卷', x:22, label:'破译古文字' },
+    { id:'river',    icon:'⛵', name:'迷雾之河', x:38, label:'渡河·失败可重试' },
+    { id:'paths',    icon:'🌿', name:'三条密道', x:54, label:'Promise.any 并行' },
+    { id:'temple',   icon:'🏛️', name:'神庙守卫', x:70, label:'Promise.race 赛跑' },
+    { id:'riddle',   icon:'🔒', name:'谜语锁',   x:84, label:'答对才能开箱' },
+    { id:'treasure', icon:'💎', name:'传说中的宝藏', x:95, label:'开箱!' },
+  ];
+
+  /* ---------- 星空 ---------- */
+  (function makeStars(){
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < 90; i++) {
+      const s = document.createElement('i');
+      s.style.left = (Math.random() * 100).toFixed(2) + '%';
+      s.style.top = (Math.random() * 100).toFixed(2) + '%';
+      s.style.animationDelay = (Math.random() * 3).toFixed(2) + 's';
+      frag.appendChild(s);
+    }
+    $('stars').appendChild(frag);
+  })();
+
+  /* ---------- 搭建场景 ---------- */
+  const spotEls = {};
+  STEPS.forEach((s) => {
+    const el = document.createElement('div');
+    el.className = 'spot';
+    el.id = 'spot-' + s.id;
+    el.style.left = s.x + '%';
+    el.innerHTML = '<div class="bubble">' + s.label + '</div>' +
+                   '<span class="icon">' + s.icon + '</span>' +
+                   '<span class="name">' + s.name + '</span>';
+    stage.appendChild(el);
+    spotEls[s.id] = el;
+
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    chip.id = 'chip-' + s.id;
+    chip.innerHTML = '<span>' + s.icon + '</span>' + s.name;
+    stepsEl.appendChild(chip);
+  });
+
+  /* ---------- UI 控制器 ---------- */
+  const ui = {
+    t0: 0, done: 0, running: false,
+
+    reset() {
+      this.t0 = performance.now();
+      this.done = 0;
+      logEl.innerHTML = '';
+      fx.innerHTML = '';
+      barFill.style.width = '0%';
+      hero.style.left = '2%';
+      STEPS.forEach((s) => {
+        spotEls[s.id].classList.remove('active', 'done');
+        $('chip-' + s.id).classList.remove('active', 'done');
+      });
+    },
+
+    async goTo(id) {
+      const s = STEPS.find((x) => x.id === id);
+      Object.values(spotEls).forEach((e) => e.classList.remove('active'));
+      spotEls[id].classList.add('active');
+      $('chip-' + id).classList.add('active');
+      hero.style.left = s.x + '%';
+      await delay(950);              // 等主角走到位
+    },
+
+    markDone(id) {
+      spotEls[id].classList.remove('active');
+      spotEls[id].classList.add('done');
+      const chip = $('chip-' + id);
+      chip.classList.remove('active');
+      chip.classList.add('done');
+      chip.innerHTML = '<span>✅</span>' + STEPS.find((x) => x.id === id).name;
+      this.done++;
+      barFill.style.width = (this.done / STEPS.length * 100) + '%';
+    },
+
+    log(text, type) {
+      const t = ((performance.now() - this.t0) / 1000).toFixed(1);
+      const row = document.createElement('div');
+      row.className = 'row ' + (type || 'info');
+      row.innerHTML = '<span class="t">[' + t + 's]</span>' + text;
+      logEl.appendChild(row);
+      logEl.scrollTop = logEl.scrollHeight;
+    },
+
+    burst() {
+      const r = hero.getBoundingClientRect(), sr = stage.getBoundingClientRect();
+      const cx = r.left - sr.left + r.width / 2, cy = r.top - sr.top + r.height / 2;
+      const icons = ['✨', '⭐', '💫', '🌟', '💰'];
+      for (let i = 0; i < 28; i++) {
+        const p = document.createElement('span');
+        p.className = 'particle';
+        p.textContent = icons[i % icons.length];
+        p.style.left = cx + 'px';
+        p.style.top = cy + 'px';
+        fx.appendChild(p);
+        const a = Math.random() * Math.PI * 2, d = 70 + Math.random() * 150;
+        p.animate([
+          { transform: 'translate(-50%,-50%) scale(.4)', opacity: 1 },
+          { transform: 'translate(calc(-50% + ' + (Math.cos(a) * d).toFixed(1) + 'px),' +
+                       ' calc(-50% + ' + (Math.sin(a) * d).toFixed(1) + 'px)) scale(1.3)', opacity: 0 }
+        ], { duration: 900 + Math.random() * 700, easing: 'cubic-bezier(.2,.7,.3,1)' })
+         .onfinish = () => p.remove();
+      }
+    }
+  };
+
+  /* ---------- 模拟宝藏地图 API(新增情节) ---------- */
+  const api = {
+    async getInitialClue() {
+      await delay(900);
+      return '📖 在古老的图书馆里找到了第一个线索: 一张写着古文字的羊皮纸...';
+    },
+
+    async decodeAncientScript(clue) {
+      await delay(1200);
+      if (!clue) throw new Error('没有线索可以解码!');
+      return '🗺️ 解码成功!宝藏在一座古老的神庙中...';
+    },
+
+    /* 新情节 1:迷雾之河,可能迷失 → 交给重试机制 */
+    async crossFoggyRiver() {
+      await delay(1100);
+      if (Math.random() < 0.35) throw new Error('🌊 迷雾太浓,你在河上迷失了方向');
+      return '⛵ 渡过了迷雾之河,对岸传来古老的钟声';
+    },
+
+    /* 新情节 2:三条密道并行探索,谁先成功走谁(Promise.any) */
+    async scoutPaths() {
+      const path = (name, ms) =>
+        delay(ms).then(() =>
+          Math.random() > 0.35
+            ? '🌿 ' + name + ' 通往神庙侧门'
+            : Promise.reject(new Error(name + ' 是死路'))
+        );
+      return Promise.any([
+        path('苔藓小径', 500),
+        path('地下暗河', 900),
+        path('断崖栈道', 1400)
+      ]);
+    },
+
+    /* 新情节 3:与神庙守卫赛跑(Promise.race) */
+    async sneakPastGuardian() {
+      return Promise.race([
+        delay(900).then(() => '🤫 你贴着石柱潜行,守卫毫无察觉'),
+        delay(500 + Math.random() * 1000).then(() => { throw new Error('🗿 守卫转身发现了你!'); })
+      ]);
+    },
+
+    /* 新情节 4:宝箱上的谜语锁 */
+    async solveRiddle() {
+      await delay(1000);
+      if (Math.random() < 0.4) throw new Error('❌ 答错了,谜语锁纹丝不动');
+      return '🔓 咒语响起,锁芯咔哒一声弹开';
+    },
+
+    async openTreasureBox() {
+      await delay(1100);
+      return '💎 恭喜!你找到了传说中的宝藏 —— 永恒之星!';
+    }
+  };
+
+  /* ---------- 主流程:async/await 重写 ---------- */
+  async function hunt() {
+    if (ui.running) return;
+    ui.running = true;
+    $('start').disabled = true;
+    ui.reset();
+
+    try {
+      // ① 图书馆:串行等待
+      await ui.goTo('library');
+      const clue = await api.getInitialClue();
+      ui.log(clue, 'info');
+      ui.markDone('library');
+
+      // ② 解码古卷:串行等待
+      await ui.goTo('script');
+      const where = await api.decodeAncientScript(clue);
+      ui.log(where, 'info');
+      ui.markDone('script');
+
+      // ③ 迷雾之河:try/catch + 重试 3 次
+      await ui.goTo('river');
+      let crossed = false;
+      for (let attempt = 1; attempt <= 3 && !crossed; attempt++) {
+        try {
+          ui.log(await api.crossFoggyRiver(), 'info');
+          crossed = true;
+        } catch (err) {
+          ui.log('第 ' + attempt + ' 次渡河失败:' + err.message, 'err');
+          if (attempt < 3) { ui.log('🔁 重新寻找渡口...', 'warn'); await delay(600); }
+        }
+      }
+      if (!crossed) throw new Error('迷雾之河无法通过,寻宝之旅中断');
+      ui.markDone('river');
+
+      // ④ 三条密道:Promise.any 并行竞赛
+      await ui.goTo('paths');
+      let route = null;
+      for (let attempt = 0; attempt < 2 && !route; attempt++) {
+        try {
+          route = await api.scoutPaths();
+        } catch (e) {
+          ui.log('三条路都是死路,换个方向再探...', 'warn');
+          await delay(600);
+        }
+      }
+      if (!route) throw new Error('密道全是死路,找不到神庙入口');
+      ui.log(route + '(Promise.any:三路同时出发,最快的那条先返回)', 'ok');
+      ui.markDone('paths');
+
+      // ⑤ 神庙守卫:Promise.race 潜行 vs 被发现
+      await ui.goTo('temple');
+      let sneaked = false;
+      for (let attempt = 1; attempt <= 3 && !sneaked; attempt++) {
+        try {
+          ui.log(await api.sneakPastGuardian(), 'info');
+          sneaked = true;
+        } catch (err) {
+          ui.log('第 ' + attempt + ' 次潜行失败:' + err.message, 'err');
+          if (attempt < 3) await delay(500);
+        }
+      }
+      if (!sneaked) throw new Error('守卫太警觉,你被赶出了神庙');
+      ui.markDone('temple');
+
+      // ⑥ 谜语锁:答错给提示再来一次
+      await ui.goTo('riddle');
+      const hints = ['💡 提示:答案藏在古老的钟声里', '💡 提示:答案与月光有关', '💡 提示:答案就在你脚下的石板上'];
+      let opened = false;
+      for (let attempt = 0; attempt < 3 && !opened; attempt++) {
+        try {
+          ui.log(await api.solveRiddle(), 'info');
+          opened = true;
+        } catch (err) {
+          ui.log(err.message, 'err');
+          if (attempt < 2) { ui.log(hints[attempt], 'warn'); await delay(500); }
+        }
+      }
+      if (!opened) throw new Error('谜语没能解开,宝箱纹丝不动');
+      ui.markDone('riddle');
+
+      // ⑦ 开箱!
+      await ui.goTo('treasure');
+      ui.log(await api.openTreasureBox(), 'ok');
+      ui.burst();
+      ui.markDone('treasure');
+      ui.log('🏁 寻宝完成!全程用时 ' + ((performance.now() - ui.t0) / 1000).toFixed(1) + ' 秒', 'ok');
+
+    } catch (err) {
+      ui.log('💀 任务失败:' + err.message, 'err');
+    } finally {
+      ui.running = false;
+      $('start').disabled = false;
+      Object.values(spotEls).forEach((e) => e.classList.remove('active'));
+    }
+  }
+
+  /* ---------- 事件绑定 ---------- */
+  $('start').addEventListener('click', hunt);
+  $('reset').addEventListener('click', () => {
+    ui.reset();
+    ui.log('🌙 夜色降临,宝藏又沉睡在地图深处...', 'warn');
+  });
+  $('speed').addEventListener('change', (e) => {
+    speed = Number(e.target.value);
+    document.documentElement.style.setProperty('--speed', speed);
+  });
+
+  /* ---------- 代码展示 ---------- */
+  $('code').textContent = [
+    '// 用 async/await 重写的寻宝流程(节选)',
+    'async function hunt() {',
+    '  try {',
+    '    const clue = await TreasureMap.getInitialClue();           // ① 串行等待',
+    '    log(clue);',
+    '    const where = await TreasureMap.decodeAncientScript(clue); // ② 串行等待',
+    '    log(where);',
+    '',
+    '    // ③ 三条密道并行探索:谁先成功用谁',
+    '    const route = await Promise.any([',
+    '      scout("苔藓小径", 500),',
+    '      scout("地下暗河", 900),',
+    '      scout("断崖栈道", 1400),',
+    '    ]);',
+    '',
+    '    // ④ 与守卫赛跑:潜行成功 vs 被发现',
+    '    await Promise.race([',
+    '      sneak().then(() => log("🤫 潜行成功")),',
+    '      caught().then(() => { throw new Error("🗿 被发现了"); }),',
+    '    ]);',
+    '',
+    '    // ⑤ 需要同时准备的道具:全部成功才算通过',
+    '    const [key, lamp, map] = await Promise.all([',
+    '      getKey(), getLamp(), getMap(),',
+    '    ]);',
+    '',
+    '    log(await TreasureMap.openTreasureBox());',
+    '  } catch (err) {',
+    '    log("💀 任务失败: " + err.message);   // 统一错误处理',
+    '  }',
+    '}'
+  ].join('\n');
+
+  /* ---------- 初始化 ---------- */
+  ui.reset();
+  ui.log('🌙 夜色降临,宝藏沉睡在地图深处,点击「开始寻宝」出发吧', 'warn');
+</script>
+</body>
+</html>
